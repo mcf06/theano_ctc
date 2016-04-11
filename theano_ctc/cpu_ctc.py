@@ -2,7 +2,12 @@ import numpy as np
 import theano
 import theano.tensor as T
 from theano.gof import Op
+from theano.gof import local_optimizer
 from theano.gradient import grad_undefined
+from theano.tensor.opt import register_canonicalize
+from theano.tensor.opt import register_stabilize
+
+
 import os
 
 class CpuCtc(Op):
@@ -31,8 +36,8 @@ class CpuCtc(Op):
     op.costs = T.fvector(name="ctc_cost")
     op.gradients = T.ftensor3(name="ctc_grad")
 
-    # Don't compute gradient unless grad() gets called   
-    op.computeGradient = theano.shared(np.asarray([0], dtype=np.int32))
+    # Don't compute gradient unless needed
+    op.computeGradient = theano.shared(np.asarray([1], dtype=np.int32))
 
     applyNode = theano.Apply(op, 
                              inputs=[acts_, input_lengths_, flat_labels_, label_lengths_, op.computeGradient], 
@@ -43,9 +48,6 @@ class CpuCtc(Op):
     return applyNode
 
   def grad(self, inputs, output_grads):
-    # Enable gradient computation
-    self.computeGradient.set_value(np.asarray([1], dtype=np.int32))
-
     return [self.gradients,
             grad_undefined(self, 1, inputs[1]),
             grad_undefined(self, 2, inputs[2]),
@@ -220,3 +222,12 @@ if (status != CTC_STATUS_SUCCESS) {
 
 cpu_ctc_cost = CpuCtc()
 
+# Disable gradient computation if not needed
+@register_canonicalize 
+@register_stabilize 
+@local_optimizer([CpuCtc]) 
+def local_CpuCtc_no_grad(node): 
+  if not isinstance(node.op, CpuCtc): 
+    return 
+  if len(node.outputs[1].clients) == 0: 
+    node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))

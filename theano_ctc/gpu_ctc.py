@@ -2,10 +2,13 @@ import numpy as np
 import theano
 import theano.tensor as T
 from theano.gof import Op
+from theano.gof import local_optimizer
 from theano.gradient import grad_undefined
 from theano.sandbox.cuda import GpuOp
 from theano.sandbox.cuda.type import CudaNdarrayType
 from theano.sandbox.cuda.var import CudaNdarrayVariable
+from theano.tensor.opt import register_canonicalize
+from theano.tensor.opt import register_stabilize
 import os
 
 class GpuCtc(GpuOp):
@@ -37,8 +40,8 @@ class GpuCtc(GpuOp):
     op.gradients = CudaNdarrayVariable(name="gpu_ctc_grad", 
                                        type=CudaNdarrayType(broadcastable=[False, False, False]))
 
-    # Don't compute gradient unless grad() gets called   
-    op.computeGradient = theano.shared(np.asarray([0], dtype=np.int32))
+    # Don't compute gradient unless needed
+    op.computeGradient = theano.shared(np.asarray([1], dtype=np.int32))
 
     applyNode = theano.Apply(op, 
                              inputs=[acts_, input_lengths_, flat_labels_, label_lengths_, op.computeGradient], 
@@ -49,9 +52,6 @@ class GpuCtc(GpuOp):
     return applyNode
 
   def grad(self, inputs, output_grads):
-    # Enable gradient computation
-    self.computeGradient.set_value(np.asarray([1], dtype=np.int32))
-
     return [self.gradients,
             grad_undefined(self, 1, inputs[1]),
             grad_undefined(self, 2, inputs[2]),
@@ -180,3 +180,12 @@ if (status != CTC_STATUS_SUCCESS) {
 
 gpu_ctc_cost = GpuCtc()
 
+# Disable gradient computation if not needed
+@register_canonicalize 
+@register_stabilize 
+@local_optimizer([GpuCtc]) 
+def local_GpuCtc_no_grad(node): 
+  if not isinstance(node.op, GpuCtc): 
+    return 
+  if len(node.outputs[1].clients) == 0: 
+    node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))
