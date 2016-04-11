@@ -34,5 +34,3 @@ See the test scripts for a working example.
 ## Status
 
 This would benefit from integration into Theano, particularly with respect to the GPU optimizations. Currently, ctc_cost always uses the GPU implementation if a GPU device is enabled.
-
-Due to the way the underlying library can simultaneously compute costs and gradients, the gradient calculation is enabled whenever T.grad() is called on a particular variable, even if the gradient is never used in a Theano function.
