@@ -1,33 +1,13 @@
 import numpy as np
 import theano
 import theano.tensor as T
-from theano.gof import Op
 from theano.gof import local_optimizer
-from theano.gradient import grad_undefined
 from theano.tensor.opt import register_canonicalize
 from theano.tensor.opt import register_stabilize
+from ctc_base import CtcBase
 
-
-import os
-
-class CpuCtc(Op):
-  ctcLibDir = os.environ["CTC_LIB"]
-
-  def make_node(self, acts, input_lengths, flat_labels, label_lengths):
-    acts_ = T.as_tensor_variable(acts)
-    input_lengths_ = T.as_tensor_variable(input_lengths)
-    flat_labels_ = T.as_tensor_variable(flat_labels)
-    label_lengths_ = T.as_tensor_variable(label_lengths)
-
-    if acts_.dtype != "float32":
-      raise Exception("acts must be float32 instead of %s" % acts.dtype)
-    if input_lengths.dtype != "int32":
-      raise Exception("input_lengths must be int32 instead of %s" % input_lengths.dtype)
-    if flat_labels.dtype != "int32":
-      raise Exception("flat_labels must be int32 instead of %s" % flat_labels.dtype)
-    if label_lengths.dtype != "int32":
-      raise Exception("label_lengths must be int32 instead of %s" % label_lengths.dtype)
-
+class CpuCtc(CtcBase):
+  def createOp(self):
     # Normally a singleton Op instance is created, and different Apply nodes are
     # created for different inputs.
     # Here, we create an Op instance specifically for this application,
@@ -35,36 +15,15 @@ class CpuCtc(Op):
     op = CpuCtc()
     op.costs = T.fvector(name="ctc_cost")
     op.gradients = T.ftensor3(name="ctc_grad")
+    return op
 
-    # Don't compute gradient unless needed
-    op.computeGradient = theano.shared(np.asarray([1], dtype=np.int32))
+  def make_node(self, acts, labels, input_lengths = None):
+    acts = T.as_tensor_variable(acts)
+    labels = T.as_tensor_variable(labels)
+    if input_lengths != None:
+      input_lengths = T.as_tensor_variable(input_lengths)
 
-    applyNode = theano.Apply(op, 
-                             inputs=[acts_, input_lengths_, flat_labels_, label_lengths_, op.computeGradient], 
-                             outputs=[op.costs, op.gradients])
-
-    # Return only the cost. Gradient will be returned by grad()
-    self.default_output = 0   
-    return applyNode
-
-  def grad(self, inputs, output_grads):
-    return [self.gradients,
-            grad_undefined(self, 1, inputs[1]),
-            grad_undefined(self, 2, inputs[2]),
-            grad_undefined(self, 3, inputs[3]),
-            grad_undefined(self, 4, inputs[4])]
-
-  def c_lib_dirs(self):
-    return [os.path.join(self.ctcLibDir, "build")]
-
-  def c_libraries(self):
-    return ["warpctc"]
-
-  def c_header_dirs(self):
-    return [os.path.join(self.ctcLibDir, "include")]
-
-  def c_headers(self):
-    return ["<iostream>", "ctc.h"]
+    return CtcBase.make_node(self, acts, labels, input_lengths)      
 
   """
    Compute the connectionist temporal classification loss between a sequence
@@ -123,9 +82,8 @@ class CpuCtc(Op):
     fail = sub['fail']
     acts = inNames[0]
     input_lengths = inNames[1]
-    flat_labels = inNames[2]
-    label_lengths = inNames[3] 
-    computeGradient = inNames[4]
+    labels = inNames[2]
+    computeGradient = inNames[3]
    
     costs = outNames[0]
     gradients = outNames[1]
@@ -139,13 +97,19 @@ computeInfo.num_threads = 1;
 // INPUTS -----------
 
 float * acts = (dtype_%(acts)s *) PyArray_DATA(%(acts)s); 
-int * flat_labels = (dtype_%(flat_labels)s *) PyArray_DATA(%(flat_labels)s); 
-int * label_lengths = (dtype_%(label_lengths)s *) PyArray_DATA(%(label_lengths)s); 
+
+SmartPtr<int*> flat_labels;
+SmartPtr<int*> label_lengths;
+flattenLabels(%(labels)s, flat_labels, label_lengths);
 
 // input_lengths must be <= acts.shape[0]
 int * input_lengths = (dtype_%(input_lengths)s *) PyArray_DATA(%(input_lengths)s); 
 int minibatch_size = PyArray_DIMS(%(acts)s)[1];
 int alphabet_size = PyArray_DIMS(%(acts)s)[2];
+
+// INTERMEDIATES -----------
+
+SmartPtr<void*> ctc_cpu_workspace;
 
 // OUTPUTS -----------
 
@@ -194,8 +158,6 @@ if (computeGradients) {
 // COMPUTE -----------
 
 ctcStatus_t status;
-void* ctc_cpu_workspace;
-
 size_t cpu_workspace_size;
 status = 
   get_workspace_size(label_lengths, input_lengths, alphabet_size, minibatch_size, computeInfo,
@@ -212,8 +174,6 @@ status =
   compute_ctc_loss(acts, gradients, flat_labels, label_lengths, input_lengths, alphabet_size,
                    minibatch_size, costs, ctc_cpu_workspace, computeInfo);
 
-free(ctc_cpu_workspace);
-
 if (status != CTC_STATUS_SUCCESS) {
   std::cout << "warpctc.compute_ctc_loss() exited with status " << status << std::endl;
   %(fail)s;
@@ -227,7 +187,6 @@ cpu_ctc_cost = CpuCtc()
 @register_stabilize 
 @local_optimizer([CpuCtc]) 
 def local_CpuCtc_no_grad(node): 
-  if not isinstance(node.op, CpuCtc): 
-    return 
-  if len(node.outputs[1].clients) == 0: 
-    node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))
+  if isinstance(node.op, CpuCtc): 
+    if len(node.outputs[1].clients) == 0: 
+      node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))

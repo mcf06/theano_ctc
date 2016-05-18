@@ -34,17 +34,17 @@ print "Softmax outputs"
 print softmax(acts)
 print
 
-# labels for each sequence, flattened
-labels = np.asarray([1,  3,3,  2,3], dtype=np.int32)
-labelT = np.asarray([1,  2,    2  ], dtype=np.int32)
+# labels for each sequence. -1 = padding to be ignored
+labels = np.asarray([[1, -1],
+                     [3, 3], 
+                     [2, 3]], dtype=np.int32)
 
 tsActs = theano.shared(acts, "acts")   # float32, so should be moved to GPU
 tsActT = theano.shared(actT, "actT")
 tsLabels = theano.shared(labels, "labels")
-tsLabelT = theano.shared(labelT, "labelT")
 
 # CTC cost
-tCost = ctc_cost(tsActs, tsActT, tsLabels, tsLabelT)
+tCost = ctc_cost(tsActs, tsLabels, tsActT)
 
 # Gradient of CTC cost
 tGrad = T.grad(T.mean(tCost), tsActs)

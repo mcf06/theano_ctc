@@ -26,7 +26,7 @@ Use the ctc_cost() function like any other Theano Op:
     from theano_ctc import ctc_cost
     import theano.tensor as T
 
-    costs = ctc_cost(acts, actT, labels, labelT)
+    costs = ctc_cost(acts, labels, seqLengths)
     grad = T.grad(T.mean(costs), acts)
 
 See the test scripts for a working example.

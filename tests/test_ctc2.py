@@ -54,9 +54,10 @@ print "Softmax outputs"
 print softmax(acts)
 print
 
-# labels for each sequence, flattened
-labels = np.asarray([1,  3,3,  2,3], dtype=np.int32)
-labelT = np.asarray([1,  2,    2  ], dtype=np.int32)
+# labels for each sequence. -1 = padding to be ignored
+labels = np.asarray([[1, -1],
+                     [3, 3], 
+                     [2, 3]], dtype=np.int32)
 
 # Symbolic equivalents
 tsInputs = theano.shared(inputs, name="inputs")
@@ -64,14 +65,13 @@ tsWeights = theano.shared(weights, name="weights")
 tsActs = T.dot(tsInputs, tsWeights)
 tsActT = theano.shared(actT, "actT")
 tsLabels = theano.shared(labels, "labels")
-tsLabelT = theano.shared(labelT, "labelT")
 
 print "tsActs:"
 dprint(tsActs)
 print
 
 # CTC cost
-tCost = ctc_cost(tsActs, tsActT, tsLabels, tsLabelT)
+tCost = ctc_cost(tsActs, tsLabels, tsActT)
 
 print "Symbolic CTC cost:"
 dprint(tCost)
