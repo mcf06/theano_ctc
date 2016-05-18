@@ -25,7 +25,6 @@ class CtcBase(Op):
     raise Exception("Called createOp() in abstract base class CtcBase")
 
   def make_node(self, acts, labels, input_lengths = None):
-    print "CTCBASE: make_node"
     # Unless specified, assume all sequences have full sequence length, i.e. acts_.shape[0]
     if input_lengths == None:
       input_lengths = T.cast(acts.shape[0], dtype="int32") * T.ones_like(acts[0,:,0], dtype=np.int32)
@@ -54,7 +53,6 @@ class CtcBase(Op):
     return applyNode
 
   def grad(self, inputs, output_grads):
-    print "CTCBASE: grad"
     return [self.gradients,
             grad_undefined(self, 1, inputs[1]),
             grad_undefined(self, 2, inputs[2]),
