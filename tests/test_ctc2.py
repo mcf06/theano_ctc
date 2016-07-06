@@ -23,10 +23,6 @@ def softmax(x):
   e_x = np.exp(x - np.max(x, axis=2).reshape(broadcastShape))
   return e_x / e_x.sum(axis=2).reshape(broadcastShape)
 
-targetN = 5
-batchSize = 1
-seqLen = 1
-
 # time, batchSize, inputLayerSize
 inputs = np.asarray([[[0, 0, 0, 0, 0, 0], [1, 2, 3, 4, 5,  0], [1, 2, 3, 4, 5, -6]], \
                      [[0, 0, 0, 0, 0, 0], [1, 2, 3, 4, 5,  5], [1, 2, 3, 4, 5, -11]], \

@@ -51,12 +51,12 @@ computeInfo.stream = 0;
 
 float * acts = CudaNdarray_DEV_DATA(%(acts)s); 
 
+SmartPtr<int*> input_lengths;
 SmartPtr<int*> flat_labels;
 SmartPtr<int*> label_lengths;
+createContiguousInputLengths(%(input_lengths)s, input_lengths);
 flattenLabels(%(labels)s, flat_labels, label_lengths);
 
-// input_lengths must be <= acts.shape[0]
-int * input_lengths = (dtype_%(input_lengths)s *) PyArray_DATA(%(input_lengths)s); 
 int minibatch_size = CudaNdarray_HOST_DIMS(%(acts)s)[1];
 int alphabet_size = CudaNdarray_HOST_DIMS(%(acts)s)[2];
 
@@ -94,8 +94,6 @@ if (!%(costs)s)
 costs = (dtype_%(costs)s *) PyArray_DATA(%(costs)s);
 
 if (computeGradients) {
-  std::cout << "Computing cost and gradient." << std::endl;
-
   if (%(gradients)s == NULL) {
     // Symbolic variable has no real backing, so create one.
     %(gradients)s = (CudaNdarray *) CudaNdarray_ZEROS(3, gradients_size);
@@ -151,3 +149,5 @@ def local_GpuCtc_no_grad(node):
   if isinstance(node.op, GpuCtc): 
     if len(node.outputs[1].clients) == 0: 
       node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))
+    else:
+      node.op.computeGradient.set_value(np.asarray([1], dtype=np.int32))

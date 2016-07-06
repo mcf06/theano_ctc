@@ -73,8 +73,6 @@ struct SmartPtr {
 };
 
 void flattenLabels(PyArrayObject* labelMatrix, SmartPtr<int*> &flatLabels, SmartPtr<int*>& labelT) {
-  int* labels = (int*) PyArray_DATA(labelMatrix);
-
   int m = PyArray_DIMS(labelMatrix)[0];
   int n = PyArray_DIMS(labelMatrix)[1];
 
@@ -85,7 +83,7 @@ void flattenLabels(PyArrayObject* labelMatrix, SmartPtr<int*> &flatLabels, Smart
   for (int i = 0; i < m; ++i) {
     int count = 0;
     for (int j = 0; j < n; ++j) {
-      int label = labels[n * i + j];
+      int label = *((int*)PyArray_GETPTR2(labelMatrix, i, j));
       if (label >= 0) {
         flatLabels[f++] = label;
         ++count;
@@ -94,4 +92,16 @@ void flattenLabels(PyArrayObject* labelMatrix, SmartPtr<int*> &flatLabels, Smart
     labelT[i] = count;
   }
 }
+
+// Ensure contiguous memory layout (no strides)
+void createContiguousInputLengths(PyArrayObject* inputLengthsArray, SmartPtr<int*>& inputLengths) {
+  int m = PyArray_DIMS(inputLengthsArray)[0];
+
+  inputLengths = (int*) malloc( m * sizeof(int) );
+
+  for (int i = 0; i < m; ++i) {
+    inputLengths[i] = *((int*)PyArray_GETPTR1(inputLengthsArray, i));
+  }
+}
+
     """

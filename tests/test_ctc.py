@@ -15,11 +15,7 @@ def softmax(x):
   e_x = np.exp(x - np.max(x, axis=2).reshape(broadcastShape))
   return e_x / e_x.sum(axis=2).reshape(broadcastShape)
 
-targetN = 5
-batchSize = 1
-seqLen = 1
-
-# time, batchSize, targetN
+# shape: time, batchSize, targetN
 acts = np.asarray([[[0,0,0,0,0],[1,2,3,4,5],[-5,-4,-3,-2,-1]],\
                    [[0,0,0,0,0],[6,7,8,9,10],[-10,-9,-8,-7,-6]],
                    [[0,0,0,0,0],[11,12,13,14,15], [-15,-14,-13,-12,-11]]], dtype=np.float32)

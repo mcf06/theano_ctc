@@ -98,12 +98,13 @@ computeInfo.num_threads = 1;
 
 float * acts = (dtype_%(acts)s *) PyArray_DATA(%(acts)s); 
 
+SmartPtr<int*> input_lengths;
 SmartPtr<int*> flat_labels;
 SmartPtr<int*> label_lengths;
+createContiguousInputLengths(%(input_lengths)s, input_lengths);
 flattenLabels(%(labels)s, flat_labels, label_lengths);
 
 // input_lengths must be <= acts.shape[0]
-int * input_lengths = (dtype_%(input_lengths)s *) PyArray_DATA(%(input_lengths)s); 
 int minibatch_size = PyArray_DIMS(%(acts)s)[1];
 int alphabet_size = PyArray_DIMS(%(acts)s)[2];
 
@@ -190,3 +191,5 @@ def local_CpuCtc_no_grad(node):
   if isinstance(node.op, CpuCtc): 
     if len(node.outputs[1].clients) == 0: 
       node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))
+    else:
+      node.op.computeGradient.set_value(np.asarray([1], dtype=np.int32))
