@@ -8,7 +8,7 @@ from theano.sandbox.cuda.type import CudaNdarrayType
 from theano.sandbox.cuda.var import CudaNdarrayVariable
 from theano.tensor.opt import register_canonicalize
 from theano.tensor.opt import register_stabilize
-from ctc_base import CtcBase
+from .ctc_base import CtcBase
 
 class GpuCtc(CtcBase, GpuOp):
   def createOp(self):

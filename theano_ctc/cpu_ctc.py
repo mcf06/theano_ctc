@@ -4,7 +4,7 @@ import theano.tensor as T
 from theano.gof import local_optimizer
 from theano.tensor.opt import register_canonicalize
 from theano.tensor.opt import register_stabilize
-from ctc_base import CtcBase
+from .ctc_base import CtcBase
 
 class CpuCtc(CtcBase):
   def createOp(self):
