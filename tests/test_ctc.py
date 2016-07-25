@@ -45,15 +45,26 @@ tCost = ctc_cost(tsActs, tsLabels, tsActT)
 # Gradient of CTC cost
 tGrad = T.grad(T.mean(tCost), tsActs)
 
-f = theano.function([], [tCost, tGrad])
+# Create train (with gradient for SGD) and test (no gradient) functions
+train = theano.function([], [tCost, tGrad])
+test = theano.function([], [tCost])
 
 print "Theano function to calculate costs and gradient of mean(costs):"
-dprint(f)
+dprint(train)
 print "\n"
 
-cost, grad = f()
-print "cost:"
+print "Theano function to calculate costs:"
+dprint(test)
+print "\n"
+
+cost, grad = train()
+print "Training cost:"
 print cost
 print
 print "gradient:"
 print np.asarray(grad)
+print
+
+cost, = test()
+print "Test cost:"
+print cost

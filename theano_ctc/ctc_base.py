@@ -41,16 +41,16 @@ class CtcBase(Op):
 
     op = self.createOp()
 
-    # Don't compute gradient unless needed
-    op.computeGradient = theano.shared(np.asarray([1], dtype=np.int32))
-
     applyNode = theano.Apply(op, 
-                             inputs=[acts, input_lengths, labels, op.computeGradient], 
+                             inputs=[acts, input_lengths, labels, self.getComputeGradientConst(True)], 
                              outputs=[op.costs, op.gradients])
 
     # Return only the cost. Gradient will be returned by grad()
     self.default_output = 0   
     return applyNode
+
+  def getComputeGradientConst(self, computeGradient):
+    return theano.tensor.as_tensor_variable(np.int32(computeGradient and 1 or 0))
 
   def grad(self, inputs, output_grads):
     return [self.gradients,

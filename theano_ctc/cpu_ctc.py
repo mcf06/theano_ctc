@@ -190,6 +190,8 @@ cpu_ctc_cost = CpuCtc()
 def local_CpuCtc_no_grad(node): 
   if isinstance(node.op, CpuCtc): 
     if len(node.outputs[1].clients) == 0: 
-      node.op.computeGradient.set_value(np.asarray([0], dtype=np.int32))
+      # No clients of gradient, so disable computation
+      node.inputs[3] = node.op.getComputeGradientConst(False)
     else:
-      node.op.computeGradient.set_value(np.asarray([1], dtype=np.int32))
+      # Gradient has clients, so enable computation
+      node.inputs[3] = node.op.getComputeGradientConst(True)
