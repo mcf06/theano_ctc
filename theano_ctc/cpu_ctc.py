@@ -7,15 +7,12 @@ from theano.tensor.opt import register_stabilize
 from .ctc_base import CtcBase
 
 class CpuCtc(CtcBase):
-  def createOp(self):
-    # Normally a singleton Op instance is created, and different Apply nodes are
-    # created for different inputs.
-    # Here, we create an Op instance specifically for this application,
-    # and store the gradient variable in it so that it can be used by grad().
-    op = CpuCtc()
-    op.costs = T.fvector(name="ctc_cost")
-    op.gradients = T.ftensor3(name="ctc_grad")
-    return op
+  def __init__(self, computeGradient = True):
+    super(CpuCtc,self).__init__()
+    self.computeGradient = computeGradient
+    self.costs = T.fvector(name="ctc_cost")
+    if self.computeGradient:
+      self.gradients = T.ftensor3(name="ctc_grad")
 
   def make_node(self, acts, labels, input_lengths = None):
     acts = T.as_tensor_variable(acts)
@@ -83,13 +80,12 @@ class CpuCtc(CtcBase):
     acts = inNames[0]
     input_lengths = inNames[1]
     labels = inNames[2]
-    computeGradient = inNames[3]
    
     costs = outNames[0]
-    gradients = outNames[1]
+    if self.computeGradient:
+      gradients = outNames[1]
 
-    return """
-
+    return (("""
 ctcComputeInfo computeInfo;
 computeInfo.loc = CTC_CPU;
 computeInfo.num_threads = 1;
@@ -118,9 +114,6 @@ float* costs;
 npy_intp cost_size = minibatch_size;
 float* gradients = NULL;
 
-int* computeGradientsData = (int*) PyArray_DATA(%(computeGradient)s);
-bool computeGradients = (computeGradientsData[0] == 1) ? true : false;
-
 if (%(costs)s == NULL) {
   // Symbolic variable has no real backing, so create one.
   %(costs)s = (PyArrayObject*)PyArray_ZEROS(1, &cost_size, NPY_FLOAT32, 0);
@@ -136,25 +129,28 @@ if (!%(costs)s)
 
 costs = (dtype_%(costs)s *) PyArray_DATA(%(costs)s);
 
-if (computeGradients) {
-  if (%(gradients)s == NULL) {
-    // Symbolic variable has no real backing, so create one.
-    %(gradients)s = (PyArrayObject*)PyArray_ZEROS(3, PyArray_DIMS(%(acts)s), NPY_FLOAT32, 0);
-  } else if (PyArray_NDIM(%(gradients)s) != 3 
-             || PyArray_DIMS(%(gradients)s)[0] != PyArray_DIMS(%(acts)s)[0]
-             || PyArray_DIMS(%(gradients)s)[1] != PyArray_DIMS(%(acts)s)[1]
-             || PyArray_DIMS(%(gradients)s)[2] != PyArray_DIMS(%(acts)s)[2]) {
-    // Existing matrix is the wrong size. Make a new one.
-    // Decrement ref counter to existing array
-    Py_XDECREF(%(gradients)s); 
-    // Allocate new array
-    %(gradients)s = (PyArrayObject*)PyArray_ZEROS(3, PyArray_DIMS(%(acts)s), NPY_FLOAT32, 0);
-  }
-  if (!%(gradients)s)
-    %(fail)s;
+""") + (not self.computeGradient and " " or """
 
-  gradients = (dtype_%(gradients)s *) PyArray_DATA(%(gradients)s);
+if (%(gradients)s == NULL) {
+  // Symbolic variable has no real backing, so create one.
+  %(gradients)s = (PyArrayObject*)PyArray_ZEROS(3, PyArray_DIMS(%(acts)s), NPY_FLOAT32, 0);
+} else if (PyArray_NDIM(%(gradients)s) != 3 
+           || PyArray_DIMS(%(gradients)s)[0] != PyArray_DIMS(%(acts)s)[0]
+           || PyArray_DIMS(%(gradients)s)[1] != PyArray_DIMS(%(acts)s)[1]
+           || PyArray_DIMS(%(gradients)s)[2] != PyArray_DIMS(%(acts)s)[2]) {
+  // Existing matrix is the wrong size. Make a new one.
+  // Decrement ref counter to existing array
+  Py_XDECREF(%(gradients)s); 
+  // Allocate new array
+  %(gradients)s = (PyArrayObject*)PyArray_ZEROS(3, PyArray_DIMS(%(acts)s), NPY_FLOAT32, 0);
 }
+if (!%(gradients)s) {
+  %(fail)s;
+}
+
+gradients = (dtype_%(gradients)s *) PyArray_DATA(%(gradients)s);
+
+""") + ("""
 
 // COMPUTE -----------
 
@@ -179,9 +175,7 @@ if (status != CTC_STATUS_SUCCESS) {
   std::cout << "warpctc.compute_ctc_loss() exited with status " << status << std::endl;
   %(fail)s;
 }
-    """ % locals()
-
-cpu_ctc_cost = CpuCtc()
+    """)) % locals()
 
 # Disable gradient computation if not needed
 @register_canonicalize 
@@ -189,9 +183,8 @@ cpu_ctc_cost = CpuCtc()
 @local_optimizer([CpuCtc]) 
 def local_CpuCtc_no_grad(node): 
   if isinstance(node.op, CpuCtc): 
-    if len(node.outputs[1].clients) == 0: 
-      # No clients of gradient, so disable computation
-      node.inputs[3] = node.op.getComputeGradientConst(False)
-    else:
-      # Gradient has clients, so enable computation
-      node.inputs[3] = node.op.getComputeGradientConst(True)
+    if len(node.outputs) > 1:
+      if len(node.outputs[1].clients) == 0:   # gradient is not used
+        node.op = CpuCtc(computeGradient = False)
+        node.outputs = node.outputs[:1]   # costs only
+

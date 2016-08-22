@@ -7,6 +7,9 @@ from theano.gradient import grad_undefined
 import os
 
 class CtcBase(Op):
+  def __init__(self):
+    super(CtcBase,self).__init__()
+
   ctcLibDir = os.environ["CTC_LIB"]
 
   def c_lib_dirs(self):
@@ -21,10 +24,7 @@ class CtcBase(Op):
   def c_headers(self):
     return ["<iostream>", "ctc.h"]
 
-  def createOp(self):
-    raise Exception("Called createOp() in abstract base class CtcBase")
-
-  def make_node(self, acts, labels, input_lengths = None):
+  def make_node(self, acts, labels, input_lengths):
     # Unless specified, assume all sequences have full sequence length, i.e. acts_.shape[0]
     if input_lengths == None:
       input_lengths = T.cast(acts.shape[0], dtype="int32") * T.ones_like(acts[0,:,0], dtype=np.int32)
@@ -39,24 +39,17 @@ class CtcBase(Op):
     if input_lengths.dtype != "int32":
       raise Exception("input_lengths must be int32 instead of %s" % input_lengths.dtype)
 
-    op = self.createOp()
-
-    applyNode = theano.Apply(op, 
-                             inputs=[acts, input_lengths, labels, self.getComputeGradientConst(True)], 
-                             outputs=[op.costs, op.gradients])
+    applyNode = theano.Apply(self, inputs=[acts, input_lengths, labels], outputs=[self.costs, self.gradients])
 
     # Return only the cost. Gradient will be returned by grad()
-    self.default_output = 0   
-    return applyNode
+    self.default_output = 0 
 
-  def getComputeGradientConst(self, computeGradient):
-    return theano.tensor.as_tensor_variable(np.int32(computeGradient and 1 or 0))
+    return applyNode
 
   def grad(self, inputs, output_grads):
     return [self.gradients,
             grad_undefined(self, 1, inputs[1]),
-            grad_undefined(self, 2, inputs[2]),
-            grad_undefined(self, 3, inputs[3])]
+            grad_undefined(self, 2, inputs[2])]
 
   def c_support_code(self):
     return """

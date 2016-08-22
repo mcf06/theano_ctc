@@ -11,16 +11,13 @@ from theano.tensor.opt import register_stabilize
 from .ctc_base import CtcBase
 
 class GpuCtc(CtcBase, GpuOp):
-  def createOp(self):
-    # Normally a singleton Op instance is created, and different Apply nodes are
-    # created for different inputs.
-    # Here, we create an Op instance specifically for this application,
-    # and store the gradient variable in it so that it can be used by grad().
-    op = GpuCtc()
-    op.costs = T.fvector(name="ctc_cost")
-    op.gradients = CudaNdarrayVariable(name="gpu_ctc_grad", 
-                                       type=CudaNdarrayType(broadcastable=[False, False, False]))
-    return op
+  def __init__(self, computeGradient = True):
+    super(GpuCtc,self).__init__()
+    self.computeGradient = computeGradient
+    self.costs = T.fvector(name="ctc_cost")
+    if self.computeGradient:
+      self.gradients = CudaNdarrayVariable(name="ctc_grad", 
+                                           type=CudaNdarrayType(broadcastable=[False, False, False]))
 
   def make_node(self, acts, labels, input_lengths = None):
     if not isinstance(acts.type, CudaNdarrayType):
@@ -36,12 +33,12 @@ class GpuCtc(CtcBase, GpuOp):
     acts = inNames[0]
     input_lengths = inNames[1]
     labels = inNames[2]
-    computeGradient = inNames[3]
 
     costs = outNames[0]
-    gradients = outNames[1]
+    if self.computeGradient:
+      gradients = outNames[1]
 
-    return """
+    return (("""
 
 ctcComputeInfo computeInfo;
 computeInfo.loc = CTC_GPU;
@@ -71,12 +68,6 @@ npy_intp costs_size = minibatch_size;  // PyArray_ZEROS wants size as npy_intp[]
 
 float* gradients = NULL;
 int gradients_size[3];  // CudaNdarray_ZEROS wants size as int[]
-gradients_size[0] = CudaNdarray_HOST_DIMS(%(acts)s)[0];
-gradients_size[1] = CudaNdarray_HOST_DIMS(%(acts)s)[1];
-gradients_size[2] = CudaNdarray_HOST_DIMS(%(acts)s)[2];
-
-int* computeGradientsData = (int*) PyArray_DATA(%(computeGradient)s);
-bool computeGradients = (computeGradientsData[0] == 1) ? true : false;
 
 if (%(costs)s == NULL) {
   // Symbolic variable has no real backing, so create one.
@@ -93,25 +84,32 @@ if (!%(costs)s)
 
 costs = (dtype_%(costs)s *) PyArray_DATA(%(costs)s);
 
-if (computeGradients) {
-  if (%(gradients)s == NULL) {
-    // Symbolic variable has no real backing, so create one.
-    %(gradients)s = (CudaNdarray *) CudaNdarray_ZEROS(3, gradients_size);
-  } else if (CudaNdarray_NDIM(%(gradients)s) != 3 
-             || CudaNdarray_DIMS(%(gradients)s)[0] != gradients_size[0]
-             || CudaNdarray_DIMS(%(gradients)s)[1] != gradients_size[1]
-             || CudaNdarray_DIMS(%(gradients)s)[2] != gradients_size[2]) {
-    // Existing matrix is the wrong size. Make a new one.
-    // Decrement ref counter to existing array
-    Py_XDECREF(%(gradients)s); 
-    // Allocate new array
-    %(gradients)s = (CudaNdarray *) CudaNdarray_ZEROS(3, gradients_size);
-  }
-  if (!%(gradients)s)
-    %(fail)s;
+""") + (not self.computeGradient and " " or """
 
-  gradients = CudaNdarray_DEV_DATA(%(gradients)s);
+gradients_size[0] = CudaNdarray_HOST_DIMS(%(acts)s)[0];
+gradients_size[1] = CudaNdarray_HOST_DIMS(%(acts)s)[1];
+gradients_size[2] = CudaNdarray_HOST_DIMS(%(acts)s)[2];
+
+if (%(gradients)s == NULL) {
+  // Symbolic variable has no real backing, so create one.
+  %(gradients)s = (CudaNdarray *) CudaNdarray_ZEROS(3, gradients_size);
+} else if (CudaNdarray_NDIM(%(gradients)s) != 3 
+           || CudaNdarray_DIMS(%(gradients)s)[0] != gradients_size[0]
+           || CudaNdarray_DIMS(%(gradients)s)[1] != gradients_size[1]
+           || CudaNdarray_DIMS(%(gradients)s)[2] != gradients_size[2]) {
+  // Existing matrix is the wrong size. Make a new one.
+  // Decrement ref counter to existing array
+  Py_XDECREF(%(gradients)s); 
+  // Allocate new array
+  %(gradients)s = (CudaNdarray *) CudaNdarray_ZEROS(3, gradients_size);
 }
+if (!%(gradients)s) {
+  %(fail)s;
+}
+
+gradients = CudaNdarray_DEV_DATA(%(gradients)s);
+
+""") + ("""
 
 // COMPUTE -----------
 
@@ -137,9 +135,7 @@ if (status != CTC_STATUS_SUCCESS) {
   std::cout << "warpctc.compute_ctc_loss() exited with status " << status << std::endl;
   %(fail)s;
 }
-    """ % locals()
-
-gpu_ctc_cost = GpuCtc()
+    """)) % locals()
 
 # Disable gradient computation if not needed
 @register_canonicalize 
@@ -147,9 +143,7 @@ gpu_ctc_cost = GpuCtc()
 @local_optimizer([GpuCtc]) 
 def local_GpuCtc_no_grad(node): 
   if isinstance(node.op, GpuCtc): 
-    if len(node.outputs[1].clients) == 0: 
-      # No clients of gradient, so disable computation
-      node.inputs[3] = node.op.getComputeGradientConst(False)
-    else:
-      # Gradient has clients, so enable computation
-      node.inputs[3] = node.op.getComputeGradientConst(True)
+    if len(node.outputs) > 1:
+      if len(node.outputs[1].clients) == 0:   # gradient is not used
+        node.op = GpuCtc(computeGradient = False)
+        node.outputs = node.outputs[:1]   # costs only
