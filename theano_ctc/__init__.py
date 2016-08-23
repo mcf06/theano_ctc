@@ -11,6 +11,9 @@ cdll.LoadLibrary(os.path.join(os.environ["CTC_LIB"], "build", "libwarpctc.so"))
 
 def ctc_cost(acts, labels, input_lengths = None):
   """
+  Given sequences of output layer activations and labels, compute the softmax output at each timestep,
+  and then compute the CTC cost of each sequence with respect to its corresponding label sequence.
+
   :param acts: Tensor of pre-softmax activations, with shape=[maxInputSeqLen, batchSize, targetN],
       where
       maxInputSeqLen >= the length of the longest input sequence.
@@ -26,6 +29,8 @@ def ctc_cost(acts, labels, input_lengths = None):
   :param input_lengths: Vector of input sequence lengths, with shape=[batchSize].
       For sequence s (0 <= s < batchSize), CTC is calculated on acts[0:input_lengths[s], s, :].
       If input_lengths is None, then all sequences in the batch are assumed to have length maxInputSeqLen.
+
+  :return: Vector of CTC costs, with shape=[batchSize]
   """
   # This should be properly integrated into the theano optimization catalog.
   # Until then, this forces the choice based on device configuration.
