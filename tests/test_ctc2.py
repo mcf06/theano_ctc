@@ -59,16 +59,16 @@ labels = np.asarray([[1, -1],
 # Symbolic equivalents
 tsInputs = theano.shared(inputs, name="inputs")
 tsWeights = theano.shared(weights, name="weights")
-tsActs = T.dot(tsInputs, tsWeights)
+tActs = T.dot(tsInputs, tsWeights)
 tsActT = theano.shared(actT, "actT")
 tsLabels = theano.shared(labels, "labels")
 
-print("tsActs:")
-dprint(tsActs)
+print("tActs:")
+dprint(tActs)
 print()
 
 # CTC cost
-tCost = ctc_cost(tsActs, tsLabels, tsActT)
+tCost = ctc_cost(tActs, tsLabels, tsActT)
 
 print("Symbolic CTC cost:")
 dprint(tCost)
