@@ -47,7 +47,11 @@ class CtcBase(Op):
     return applyNode
 
   def grad(self, inputs, output_grads):
-    return [self.gradients,
+    # self.gradients.shape = [seqLen, batchSize, outputSize]
+    # output_grads[0].shape = [batchSize]  (one cost per sequence)
+    # So, reshape output_grads to [1, batchSize, 1] for broadcasting
+    output_grad = output_grads[0].reshape( (1, -1, 1) )
+    return [output_grad * self.gradients,
             grad_undefined(self, 1, inputs[1]),
             grad_undefined(self, 2, inputs[2])]
 
