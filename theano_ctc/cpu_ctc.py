@@ -92,7 +92,16 @@ computeInfo.num_threads = 1;
 
 // INPUTS -----------
 
-float * acts = (dtype_%(acts)s *) PyArray_DATA(%(acts)s); 
+float * acts = NULL;
+PyArrayObject* actsArrayCopy = NULL;
+if (PyArray_IS_C_CONTIGUOUS(%(acts)s)) {
+  acts = (dtype_%(acts)s *) PyArray_DATA( %(acts)s ); 
+} else {
+  actsArrayCopy = PyArray_GETCONTIGUOUS(%(acts)s);
+  if (actsArrayCopy != NULL) {
+    acts = (dtype_%(acts)s *) PyArray_DATA(actsArrayCopy); 
+  }
+}
 
 SmartPtr<int*> input_lengths;
 SmartPtr<int*> flat_labels;
@@ -170,6 +179,8 @@ ctc_cpu_workspace = malloc(cpu_workspace_size);
 status = 
   compute_ctc_loss(acts, gradients, flat_labels, label_lengths, input_lengths, alphabet_size,
                    minibatch_size, costs, ctc_cpu_workspace, computeInfo);
+
+Py_XDECREF(actsArrayCopy);
 
 if (status != CTC_STATUS_SUCCESS) {
   std::cout << "warpctc.compute_ctc_loss() exited with status " << status << std::endl;

@@ -46,7 +46,16 @@ computeInfo.stream = 0;
 
 // INPUTS -----------
 
-float * acts = CudaNdarray_DEV_DATA(%(acts)s); 
+float * acts = NULL;
+CudaNdarray* actsArrayCopy = NULL;
+if (CudaNdarray_is_c_contiguous(%(acts)s)) {
+  acts = CudaNdarray_DEV_DATA(%(acts)s); 
+} else {
+  actsArrayCopy = (CudaNdarray*) CudaNdarray_Copy(%(acts)s);
+  if (actsArrayCopy != NULL) {
+    acts = CudaNdarray_DEV_DATA(actsArrayCopy);
+  }
+}
 
 SmartPtr<int*> input_lengths;
 SmartPtr<int*> flat_labels;
@@ -83,6 +92,9 @@ if (!%(costs)s)
   %(fail)s;
 
 costs = (dtype_%(costs)s *) PyArray_DATA(%(costs)s);
+
+if (!acts)
+  %(fail)s;
 
 """) + (not self.computeGradient and " " or """
 
@@ -130,6 +142,8 @@ ctc_gpu_workspace = device_malloc(gpu_workspace_size, 1);
 status = 
   compute_ctc_loss(acts, gradients, flat_labels, label_lengths, input_lengths, alphabet_size,
                    minibatch_size, costs, ctc_gpu_workspace, computeInfo);
+
+Py_XDECREF(actsArrayCopy);
 
 if (status != CTC_STATUS_SUCCESS) {
   std::cout << "warpctc.compute_ctc_loss() exited with status " << status << std::endl;
